@@ -1,3 +1,7 @@
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning, module="trio")
+
+
 from fastapi import FastAPI, Request, BackgroundTasks
 import os, json, base64
 from dotenv import load_dotenv
