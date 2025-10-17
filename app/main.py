@@ -1,3 +1,5 @@
+from datetime import datetime
+from app.checks_validator import validate_checks, generate_checks_report
 import warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="trio")
 
@@ -34,8 +36,18 @@ def load_processed():
 def save_processed(data):
     json.dump(data, open(PROCESSED_PATH, "w"), indent=2)
 
+def log_notification_result(task_id, result, round_num):
+    """Logs the outcome of notification attempts."""
+    if result and isinstance(result, dict):
+        status = result.get("status", "unknown")
+        print(f"📋 Notification log | Task: {task_id} | Round: {round_num} | Status: {status}")
+    else:
+        print(f"📋 Notification log | Task: {task_id} | Round: {round_num} | Result: {result}")
+
+
 # === Background task ===
 def process_request(data):
+    request_timestamp = datetime.now().isoformat()
     round_num = data.get("round", 1)
     task_id = data["task"]
     print(f"⚙ Starting background process for task {task_id} (round {round_num})")
@@ -61,9 +73,24 @@ def process_request(data):
         round_num=round_num,
         prev_readme=prev_readme
         )
-
+    
     files = gen.get("files", {})
     saved_info = gen.get("attachments", [])
+    
+    # Validate checks against generated code
+    html_code = files.get("index.html", "")
+    readme_content = files.get("README.md", "")
+    checks = data.get("checks", [])
+    
+    if checks:
+        print("\n🔍 Validating against checks...")
+        validation_result = validate_checks(html_code, readme_content, checks)
+        checks_report = generate_checks_report(validation_result)
+        print(checks_report)
+        data["validation_result"] = validation_result
+    else:
+        data["validation_result"] = {"all_passed": True, "score": 100}
+
 
     # Step 1: Get or create repo
     repo = create_repo(task_id, description=f"Auto-generated app for task: {data['brief']}")
@@ -131,7 +158,8 @@ def process_request(data):
     processed[key] = payload
     save_processed(processed)
 
-    print(f"✅ Finished round {round_num} for {task_id}")
+    result = notify_evaluation_server(data.get("evaluation_url"), payload, request_timestamp)
+    log_notification_result(task_id, result, round_num)
 
 
 # === Main endpoint ===
